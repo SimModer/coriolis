@@ -161,8 +161,15 @@ The Journal API processes the following events:
 | `MaterialCollected` | Increments the count of a single collected material |
 | `MaterialTrade` | Decrements the paid material and increments the received material |
 | `EngineerCraft` | Updates engineering on the current ship's module |
+| `Statistics` | Captures the Merc Coin balance from `Bank_Account.MercCoins_Current` |
 
 All other events are silently ignored — you can safely send every journal line without filtering (but please don't, think of the bandwidth and server load).
+
+> **Note on currencies.** Coriolis tracks two commander finances for the build shopping list: **credits** and **Merc Coin** (an operations currency earned from operations/missions, used to purchase and pre-engineer some modules — it is *not* a material). On the Journal API these are sourced from raw journal events:
+> - **Credits** come from the `LoadGame` event's `Credits` field.
+> - **Merc Coin** comes from the `Statistics` event's `Bank_Account.MercCoins_Current` field.
+>
+> `Statistics` fires infrequently (typically at session start and when finances change), so send it whenever the game emits it to keep the Merc Coin balance current.
 
 ### Response
 
@@ -209,6 +216,25 @@ When the game starts, the journal emits several events in quick succession. You 
       { "Label":"Mass", "Value":22.0, "OriginalValue":20.0, "LessIsGood":1 },
       { "Label":"FSDOptimalMass", "Value":1351.25, "OriginalValue":1175.0, "LessIsGood":0 }
     ]
+  }
+}
+```
+
+### Example: Sending a Statistics event (Merc Coin balance)
+
+Send the raw `Statistics` event exactly as it appears in the journal. The server reads the Merc Coin balance from `Bank_Account.MercCoins_Current` (other sections of the event are ignored). Credits are captured separately from `LoadGame`.
+
+```json
+{
+  "cmdr": "CMDR Name",
+  "entry": {
+    "timestamp":"2026-05-01T16:47:37Z",
+    "event":"Statistics",
+    "Bank_Account":{
+      "Current_Wealth":1495236280,
+      "Spendable_Credits":1398401651,
+      "MercCoins_Current":100
+    }
   }
 }
 ```
@@ -404,3 +430,28 @@ Include the full list of stored modules:
   ]
 }
 ```
+
+#### Statistics / Finances Events
+
+Events: `Statistics`
+
+Include a `statistics` object with the commander's finances. Coriolis uses these for the build shopping list to show the credits and Merc Coin a build requires versus what the commander owns.
+
+- `credits` — the commander's spendable credit balance (from EDMC's tracked `state['Credits']`).
+- `mercCoins` — the Merc Coin balance, taken from the `Statistics` journal event's `Bank_Account.MercCoins_Current`. Merc Coin is an operations currency (earned from operations/missions), **not** a material — do not send it in the materials array.
+- `currentWealth` — optional, the commander's total wealth (`Bank_Account.Current_Wealth`).
+
+```json
+{
+  "event": "Statistics",
+  "timestamp": "2026-03-10T12:34:56Z",
+  "commander": "CMDR Name",
+  "statistics": {
+    "credits": 1398401651,
+    "currentWealth": 1495236280,
+    "mercCoins": 100
+  }
+}
+```
+
+The `Statistics` journal event fires infrequently (typically at session start and when finances change). Send it whenever the game emits it so the Merc Coin and credit balances stay current.
