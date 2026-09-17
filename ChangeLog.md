@@ -1,3 +1,5 @@
+#4.1.6
+  * Materials list now shows Merc Coin and total credits separately, with linked builds showing the amount still needed
 #4.1.5
   * Operations Update live
 #4.1.4

@@ -1,5 +1,46 @@
 [
   {
+    "id": 59,
+    "version": "4.1.6",
+    "text": "Materials list now shows Merc Coin and total credits separately, with linked builds showing the amount still needed",
+    "changes": [
+      "Materials list now shows Merc Coin and total credits separately, with linked builds showing the amount still needed"
+    ]
+  },
+  {
+    "id": 58,
+    "version": "4.1.5",
+    "text": "Operations Update live",
+    "changes": [
+      "Operations Update live"
+    ]
+  },
+  {
+    "id": 57,
+    "version": "4.1.4",
+    "text": "Fixed Federal Dropship import",
+    "changes": [
+      "Fixed Federal Dropship import",
+      "Added test for Federal Dropship internal slot indexing"
+    ]
+  },
+  {
+    "id": 56,
+    "version": "4.1.3",
+    "text": "Fixed hull armour resistance calculation",
+    "changes": [
+      "Fixed hull armour resistance calculation"
+    ]
+  },
+  {
+    "id": 55,
+    "version": "4.1.2",
+    "text": "Fixing deployment breaking on new modules being imported.",
+    "changes": [
+      "Fixing deployment breaking on new modules being imported."
+    ]
+  },
+  {
     "id": 54,
     "version": "4.1.1",
     "text": "Fixes to operations module/blueprint stats",
