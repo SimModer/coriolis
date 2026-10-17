@@ -126,6 +126,10 @@ export default class Ship {
               slotIndex: slotCounter.get(currentSlotType).length,
               maxClass: slot.class,
               eligible: slot.eligible,
+              // Pass through the optional MVR opt-in flag so slot-specific
+              // Mining Volley Repeater eligibility (e.g. the Anaconda Mk II's
+              // two lower Large hardpoints) survives onto the slot object.
+              mvr: slot.mvr,
             });
           }
         } else {

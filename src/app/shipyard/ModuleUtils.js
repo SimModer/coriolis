@@ -326,6 +326,8 @@ const INTGRPCAT = {
   'fh': 'hangars',
   'fhmkii': 'hangars',
   'pv': 'hangars',
+  'lpv': 'hangars',
+  'lpvmkii': 'hangars',
   'cc': 'limpet controllers',
   'fx': 'limpet controllers',
   'hb': 'limpet controllers',

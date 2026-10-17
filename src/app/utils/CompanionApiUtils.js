@@ -77,6 +77,7 @@ export const CORIOLIS_TO_FD_BULKHEAD_NAME_MAPPING = BulkheadNames.reduce(
 export const SHIP_FD_NAME_TO_CORIOLIS_NAME = {
   'Adder': 'adder',
   'Anaconda': 'anaconda',
+  'AnacondaMkII': 'anaconda2',
   'Asp': 'asp',
   'Asp_Scout': 'asp_scout',
   'BelugaLiner': 'beluga',

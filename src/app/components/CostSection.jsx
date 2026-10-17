@@ -631,6 +631,8 @@ export default class CostSection extends TranslatedComponent {
               q = slotGroup[i].m.getAmmo();
               break;
             case 'pv':
+            case 'lpv':
+            case 'lpvmkii':
               srvs += slotGroup[i].m.getBays();
               break;
             case 'fx': case 'hb': case 'cc': case 'pc':
