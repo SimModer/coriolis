@@ -1,3 +1,6 @@
+#4.1.14
+  * Fixes to Operations updates
+  * Anaconda MkII Added
 #4.1.13
   * Show Merc Coin Costs including engineering costs
 #4.1.12

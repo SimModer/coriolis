@@ -135,6 +135,9 @@ export default class ModuleSet {
       if (key == 'fhmkii' && !(ship.vesselHangarsMkII && ship.vesselHangarsMkII === true)) {
         continue;
       }
+      if (key == 'lpvmkii' && !(ship.vehicleHangarsMkII && ship.vehicleHangarsMkII === true)) {
+        continue;
+      }
       let data = filter(this.internal[key], c, 0, this.mass);
       if (data.length) {  // If group is not empty
         o[key] = data;
@@ -149,10 +152,18 @@ export default class ModuleSet {
    * @param  {Object} eligible) The map of eligible hardpoint groups
    * @return {object}           A map of all eligible modules by group
    */
-  getHps(ship, c, eligible) {
+  getHps(ship, c, eligible, slot) {
     let o = {};
     for (let key in this.hardpoints) {
       if (eligible && !eligible[key]) { // If the slot has eligibility restrictions
+        continue;
+      }
+      // The Mining Volley Repeater is restricted to specific slots on ships
+      // that gate it that way. The Anaconda Mk II allows it only on its two
+      // lower Large hardpoints, which carry an `mvr` opt-in flag; drop it from
+      // every other slot on that ship. Other ships (e.g. the Type-11, which
+      // offers it on its mining slots) are unaffected.
+      if (key === 'mvr' && ship && ship.id === 'anaconda2' && !(slot && slot.mvr)) {
         continue;
       }
       let data = filter(this.hardpoints[key], c, c ? 1 : 0, this.mass);

@@ -37,6 +37,8 @@ const GRPCAT = {
   'fh': 'hangars',
   'fhmkii': 'hangars',
   'pv': 'hangars',
+  'lpv': 'hangars',
+  'lpvmkii': 'hangars',
   'fs': 'fuel',
   'ft': 'fuel',
   'hr': 'structural reinforcement',
@@ -105,7 +107,7 @@ const INTCAT = {
   'cargo racks': ['cr', 'crl'],
   'fsd interdictor': ['fi'],
   'fuel': ['ft', 'fs'],
-  'hangars': ['fh', 'fhmkii', 'pv'],
+  'hangars': ['fh', 'fhmkii', 'pv', 'lpv', 'lpvmkii'],
   'limpet controllers': ['cc', 'fx', 'hb', 'pc', 'rpl', 'mlc'],
   'passenger cabins': ['pce', 'pcemkii', 'pci', 'pcimkii', 'pcm', 'pcq'],
   'refineries': ['rf'],
@@ -252,7 +254,11 @@ export default class AvailableModulesMenu extends TranslatedComponent {
 
     // Name / class+rating header — orange bg, dark brown text, matching engineering menu headings
     const classRating = mod.class && mod.rating ? `${mod.class}${mod.rating} ` : '';
-    rows.push(<div key='name' className='cap' style={{ margin: '-0.5em -0.5em 0.4em -0.5em', padding: '0.2em 0.5em', background: '#FF8C0D', color: 'rgba(56,30,0,0.85)', textAlign: 'left', fontWeight: 'bold', textTransform: 'uppercase' }}>{classRating}{translate(mod.name || mod.grp)}</div>);
+    // Prefer the specific module name (name, then ukName) over the generic group
+    // label so variants that share a group — e.g. the Large vs MkII Large vs
+    // FREE Planetary Vehicle Hangars — are distinguishable in the tooltip.
+    const headerName = mod.name ? translate(mod.name) : (rawMod.ukName || translate(mod.grp));
+    rows.push(<div key='name' className='cap' style={{ margin: '-0.5em -0.5em 0.4em -0.5em', padding: '0.2em 0.5em', background: '#FF8C0D', color: 'rgba(56,30,0,0.85)', textAlign: 'left', fontWeight: 'bold', textTransform: 'uppercase' }}>{classRating}{headerName}</div>);
 
     // Power
     if (mod.grp === 'pp') {
@@ -333,9 +339,15 @@ export default class AvailableModulesMenu extends TranslatedComponent {
     if (mod.getScanTime()) rows.push(<div key='scantime'>{translate('scantime')}: {formats.f1(mod.getScanTime())}{units.s}</div>);
     if (mod.getScanAngle()) rows.push(<div key='scanangle'>{translate('scan angle')}: {formats.f2(mod.getScanAngle())}°</div>);
 
-    // Cost
+    // Cost — show the credit cost, or an explicit "Free" when the module has
+    // no cost (e.g. the free Large Planetary Vehicle Hangar variants) so users
+    // can tell free and paid variants apart.
     const cost = rawMod.cost;
-    if (cost) rows.push(<div key='cost'>{translate('cost')}: {formats.int(Math.round(cost * (1 - Persist.getModuleDiscount())))}{units.CR}</div>);
+    if (cost) {
+      rows.push(<div key='cost'>{translate('cost')}: {formats.int(Math.round(cost * (1 - Persist.getModuleDiscount())))}{units.CR}</div>);
+    } else if (cost === 0) {
+      rows.push(<div key='cost'>{translate('cost')}: {translate('free')}</div>);
+    }
 
     if (rows.length === 0) return null;
 
@@ -529,9 +541,14 @@ export default class AvailableModulesMenu extends TranslatedComponent {
     // Filter out modules with invalid/missing critical properties for their type
     if (!mod.class && !mod.rating && !mod.name && mod.id.length < 3) return false;
 
-    // Filter out ship-specific thrusters that don't match the current ship
-    if (mod.ship && this.props.ship && mod.ship !== this.props.ship.id) {
-      return false;
+    // Filter out ship-specific modules that don't match the current ship.
+    // `mod.ship` may be a single ship id or an array of ids (e.g. the Mining
+    // Volley Repeater, available to both the Type-11 and the Anaconda Mk II).
+    if (mod.ship && this.props.ship) {
+      const allowedShips = Array.isArray(mod.ship) ? mod.ship : [mod.ship];
+      if (!allowedShips.includes(this.props.ship.id)) {
+        return false;
+      }
     }
 
     return true;
@@ -732,6 +749,7 @@ export default class AvailableModulesMenu extends TranslatedComponent {
         <div className="module-content"> {availabilityIcon}
           {mountIcon && <span className="module-mount">{mountIcon}</span>}
           <span className="module-text">{warningIcon} {displayName} </span>
+          {mod.cost === 0 && <span className="module-free-badge" title={translate('free')}>{translate('free')}</span>}
         </div>
       </div>
     );
@@ -1391,6 +1409,8 @@ export default class AvailableModulesMenu extends TranslatedComponent {
       'fh': 'Vessel Hangar',
       'fhmkii': 'Mk II Vessel Hangar',
       'pv': 'Planetary Vehicle Hangar',
+      'lpv': 'Large Planetary Vehicle Hangar',
+      'lpvmkii': 'Mk II Large Planetary Vehicle Hangar',
       'fs': 'Fuel Scoop',
       'ft': 'Fuel Tank',
       'hr': 'Hull Reinforcement Package',
