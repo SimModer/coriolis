@@ -8,6 +8,7 @@ import * as _ from 'lodash';
 import isEqual from 'lodash/lang';
 import { Ships, Modifications } from 'coriolis-data/dist';
 import { chain } from 'lodash';
+import { needsInternalMigration, OLD_INTERNAL_LAYOUTS, remapInternalArray, remapInternalParallel } from './LinkMigration';
 const zlib = require('zlib');
 
 const UNIQUE_MODULES = ['psg', 'sg', 'bsg', 'rf', 'fs', 'fh', 'gfsb', 'dc', 'ews', 'mlc'];
@@ -84,11 +85,6 @@ export default class Ship {
     this.availCS = ModuleUtils.forShip(id);
 
     for (let p in properties) { this[p] = properties[p]; }  // Copy all base properties from shipData
-
-    // DEBUG
-    if (id === 'imperial_courier') {
-      console.log('Imperial Courier constructor - minthrust:', this.minthrust, 'properties.minthrust:', properties.minthrust);
-    }
 
     for (let slotType in slots) {   // Initialize all slots
       // small counter to keep track of the slot indexes
@@ -368,7 +364,7 @@ export default class Ship {
    */
   toString() {
     return [
-      'A',
+      'B',
       this.getStandardString(),
       this.getHardpointsString(),
       this.getInternalString(),
@@ -1013,28 +1009,45 @@ export default class Ship {
       return this;
     }
 
-    let standard = new Array(this.standard.length),
-        hardpoints = new Array(this.hardpoints.length),
-        internal = new Array(this.internal.length),
-        modifications = new Array(1 + this.standard.length + this.hardpoints.length + this.internal.length),
-        blueprints = new Array(1 + this.standard.length + this.hardpoints.length + this.internal.length),
-        parts = serializedString.split('.'),
+    let parts = serializedString.split('.'),
         priorities = null,
         enabled = null,
         code = parts[0];
 
-    // Code has a version ID embedded as the first character (if it is alphabetic)
+    // The first character identifies the link version:
+    //   '0'-'4' (digit) -> v1 (legacy, pre-military-slots)
+    //   'A'            -> v2 (legacy positional, coriolis-data pre-new-slots order)
+    //   'B'            -> v3 (positional against ship-slots.json authoritative order)
+    // See coriolis/docs/link-format-v3.md.
     let version;
     if (code && code.match(/^[0-4]/)) {
-      // Starting with bulkhead number is version 1
       version = 1;
+    } else if (code && code.charAt(0) === 'B') {
+      version = 3;
+      code = code.substring(1);
     } else {
-      // Version 2 (current version)
+      // 'A' (or any other alpha marker) -> v2
       version = 2;
       if (code) {
         code = code.substring(1);
       }
     }
+
+    // A v1/v2 link for a ship that has since gained/re-sized internal slots is
+    // positional against the ship's OLD internal layout. Decode using that OLD
+    // length, then remap onto the current (new) layout so modules land in their
+    // original slots and new slots stay empty. v3 links are already in current
+    // order, so no migration.
+    const migrateInternal = version !== 3 && needsInternalMigration(this.id);
+    const oldInternalLen = migrateInternal
+      ? OLD_INTERNAL_LAYOUTS[this.id].length
+      : this.internal.length;
+
+    let standard = new Array(this.standard.length),
+        hardpoints = new Array(this.hardpoints.length),
+        internal = new Array(oldInternalLen),
+        modifications = new Array(1 + this.standard.length + this.hardpoints.length + oldInternalLen),
+        blueprints = new Array(1 + this.standard.length + this.hardpoints.length + oldInternalLen);
 
     if (parts[1]) {
       enabled = LZString.decompressFromBase64(Utils.fromUrlSafe(parts[1])).split('');
@@ -1059,9 +1072,32 @@ export default class Ship {
 
     decodeToArray(code, internal, decodeToArray(code, hardpoints, decodeToArray(code, standard, 1)));
 
-    if (version != 2) {
+    if (version == 1) {
       // Alter as required due to changes in the (build) code from one version to the next
       this.upgradeInternals(internal, 1 + this.standard.length + this.hardpoints.length, priorities, enabled, modifications, blueprints, version);
+    }
+
+    if (migrateInternal) {
+      // Remap the decoded OLD-order internal slots (and their parallel arrays)
+      // onto the current layout. modifications/blueprints are global-indexed:
+      // [bulkhead, ...standard, ...hardpoints, ...internal], so the internal
+      // portion is remapped in place at the internal offset. priorities/enabled
+      // share that same global layout.
+      const preInternal = 1 + this.standard.length + this.hardpoints.length;
+
+      internal = remapInternalArray(this.id, internal);
+
+      const remapTail = (arr, fill) => {
+        if (!arr) return arr;
+        const head = arr.slice(0, preInternal);
+        const oldTail = arr.slice(preInternal, preInternal + oldInternalLen);
+        const newTail = remapInternalParallel(this.id, oldTail, fill);
+        return head.concat(newTail);
+      };
+      priorities = remapTail(priorities, '0');
+      enabled = remapTail(enabled, '1');
+      modifications = remapTail(modifications, undefined);
+      blueprints = remapTail(blueprints, undefined);
     }
 
     return this.buildWith(
@@ -1529,25 +1565,9 @@ export default class Ship {
     const reserveFuelMass = this.reserveFuelCapacity || 0;
     const movementMass = this.dryMass + this.fuelCapacity + reserveFuelMass;
 
-    // DEBUG for Imperial Courier
-    if (this.id === 'imperial_courier' && this.standard && this.standard[1] && this.standard[1].m) {
-      console.log('updateMovement():');
-      console.log('  dryMass:', this.dryMass);
-      console.log('  fuelCapacity:', this.fuelCapacity);
-      console.log('  reserveFuelCapacity:', this.reserveFuelCapacity || 0);
-      console.log('  movementMass:', movementMass);
-      console.log('  thrusters:', this.standard[1].m.name, this.standard[1].m.class + this.standard[1].m.rating);
-    }
-
     this.speeds = Calc.speed(movementMass, this.speed, this.standard[1].m, this.minthrust);
     this.topSpeed = this.speeds[4];
     this.topBoost = this.canBoost(0, this.fuelCapacity) ? this.speeds[4] * this.boost / this.speed : 0;
-
-    // DEBUG for Imperial Courier
-    if (this.id === 'imperial_courier') {
-      console.log('  topSpeed:', this.topSpeed.toFixed(1), 'm/s');
-      console.log('  topBoost:', this.topBoost.toFixed(1), 'm/s');
-    }
 
     this.pitches = Calc.pitch(movementMass, this.pitch, this.standard[1].m, this.pipSpeed);
     this.topPitch = this.pitches[4];
