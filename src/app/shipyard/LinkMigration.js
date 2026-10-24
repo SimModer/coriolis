@@ -98,19 +98,35 @@ export function buildInternalRemap(shipId) {
   const oldLayout = OLD_INTERNAL_LAYOUTS[shipId];
   const newLayout = Ships[shipId].slots.internal;
 
-  // Bucket old indices by kind|class in order.
-  const buckets = {};
+  // Group the OLD module indices by kind|class, in their original order.
+  const oldByKey = {};
   oldLayout.forEach((o, i) => {
     const key = o.kind + '|' + o.class;
-    (buckets[key] = buckets[key] || []).push(i);
+    (oldByKey[key] = oldByKey[key] || []).push(i);
   });
 
-  const newFromOld = newLayout.map((s) => {
+  // Group the NEW slot indices by kind|class, in ship-slots order.
+  const newByKey = {};
+  newLayout.forEach((s, ni) => {
     const key = newSlotKind(s) + '|' + newSlotClass(s);
-    const b = buckets[key];
-    if (b && b.length) return b.shift();
-    return null;
+    (newByKey[key] = newByKey[key] || []).push(ni);
   });
+
+  // For each group, assign old modules to the BOTTOM of the group's new slots:
+  // a group that gained slots keeps its genuinely-new slot(s) at the TOP empty
+  // (ship-slots.json inserts new slots, e.g. Slot00_SizeN, at the front of their
+  // size band), and the old modules fill the remaining lower positions in order.
+  // newFromOld[newIndex] = oldIndex, or null for an unfilled (new) slot.
+  const newFromOld = new Array(newLayout.length).fill(null);
+  for (const key in newByKey) {
+    const newIdxs = newByKey[key];
+    const oldIdxs = oldByKey[key] || [];
+    // Right-align: the last oldIdxs.length new slots receive the old modules.
+    const offset = newIdxs.length - oldIdxs.length;
+    for (let k = 0; k < oldIdxs.length; k++) {
+      newFromOld[newIdxs[offset + k]] = oldIdxs[k];
+    }
+  }
 
   return { newFromOld, newLength: newLayout.length };
 }
@@ -145,6 +161,106 @@ export function remapInternalArray(shipId, oldInternal) {
 export function remapInternalParallel(shipId, oldArr, fill) {
   if (!oldArr) return oldArr;
   const { newFromOld, newLength } = buildInternalRemap(shipId);
+  const out = new Array(newLength);
+  for (let ni = 0; ni < newLength; ni++) {
+    const oi = newFromOld[ni];
+    out[ni] = (oi === null || oldArr[oi] === undefined) ? fill : oldArr[oi];
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Hardpoint / utility-mount migration
+// ---------------------------------------------------------------------------
+// Some ships gained a HARDPOINT slot (e.g. the Asp Scout gained a 3rd utility
+// mount). Old links encode exactly the OLD number of hardpoint slots, so decoding
+// against the grown array over-reads the positional stream and shifts the internal
+// slots that follow. We decode hardpoints using the OLD length, then remap onto
+// the current array.
+//
+// Unlike internal slots (new ones inserted at the FRONT of their size band),
+// Frontier APPENDS new utility mounts at the END of the class-0 band (named
+// TinyHardpointN). So hardpoints LEFT-ALIGN: old modules keep the first positions
+// of each class group and the genuinely-new (trailing) slots stay empty.
+
+/**
+ * PRE-CHANGE hardpoint layouts (class of each slot, in old link order). A
+ * hardpoint "class" is its mount size: 0 = utility mount, 1-4 = weapon. Only
+ * ships whose hardpoints array changed are listed.
+ * Captured 2026-10-24 prior to the utility-slot rebalance.
+ */
+export const OLD_HARDPOINT_LAYOUTS = {
+  // Asp Scout gained a 3rd utility mount: [2,2,1,1,0,0] -> [2,2,1,1,0,0,0]
+  asp_scout: [2, 2, 1, 1, 0, 0],
+};
+
+/**
+ * Whether a ship needs old-link hardpoint migration.
+ * @param {String} shipId coriolis ship id
+ * @return {Boolean} true if the ship's hardpoint layout changed
+ */
+export function needsHardpointMigration(shipId) {
+  return Object.prototype.hasOwnProperty.call(OLD_HARDPOINT_LAYOUTS, shipId);
+}
+
+/**
+ * Build the OLD-index -> NEW-index map for a changed ship's hardpoints, plus the
+ * NEW length. Old modules left-align within each mount-class group; trailing new
+ * slots map to null (empty). newFromOld[newIndex] = oldIndex, or null.
+ * @param {String} shipId coriolis ship id (must be in OLD_HARDPOINT_LAYOUTS)
+ * @return {{ newFromOld: Array<Number|null>, newLength: Number }}
+ */
+export function buildHardpointRemap(shipId) {
+  const oldLayout = OLD_HARDPOINT_LAYOUTS[shipId];
+  const newLayout = Ships[shipId].slots.hardpoints; // array of class numbers
+
+  // Group OLD indices by class (in order) and NEW indices by class (in order).
+  const oldByClass = {};
+  oldLayout.forEach((c, i) => { (oldByClass[c] = oldByClass[c] || []).push(i); });
+  const newByClass = {};
+  newLayout.forEach((c, ni) => { (newByClass[c] = newByClass[c] || []).push(ni); });
+
+  // Left-align: the FIRST oldIdxs.length new slots of each class receive the old
+  // modules in order; any extra (trailing) new slots stay empty.
+  const newFromOld = new Array(newLayout.length).fill(null);
+  for (const cls in newByClass) {
+    const newIdxs = newByClass[cls];
+    const oldIdxs = oldByClass[cls] || [];
+    for (let k = 0; k < oldIdxs.length; k++) {
+      newFromOld[newIdxs[k]] = oldIdxs[k];
+    }
+  }
+
+  return { newFromOld, newLength: newLayout.length };
+}
+
+/**
+ * Remap a decoded OLD-order hardpoint array onto the current hardpoint order.
+ * @param {String} shipId coriolis ship id
+ * @param {Array} oldHardpoints decoded hardpoint array in OLD order
+ * @return {Array} hardpoint array in NEW order (new slots = 0)
+ */
+export function remapHardpointArray(shipId, oldHardpoints) {
+  const { newFromOld, newLength } = buildHardpointRemap(shipId);
+  const out = new Array(newLength);
+  for (let ni = 0; ni < newLength; ni++) {
+    const oi = newFromOld[ni];
+    out[ni] = (oi === null || oldHardpoints[oi] === undefined) ? 0 : oldHardpoints[oi];
+  }
+  return out;
+}
+
+/**
+ * Remap a parallel per-hardpoint-slot array (priorities / enabled / modifications
+ * / blueprints) from OLD order to NEW order, inserting `fill` for new slots.
+ * @param {String} shipId coriolis ship id
+ * @param {Array} oldArr parallel array in OLD hardpoint order
+ * @param {*} fill value for genuinely-new slots
+ * @return {Array} parallel array in NEW hardpoint order
+ */
+export function remapHardpointParallel(shipId, oldArr, fill) {
+  if (!oldArr) return oldArr;
+  const { newFromOld, newLength } = buildHardpointRemap(shipId);
   const out = new Array(newLength);
   for (let ni = 0; ni < newLength; ni++) {
     const oi = newFromOld[ni];
