@@ -8,7 +8,8 @@ import * as _ from 'lodash';
 import isEqual from 'lodash/lang';
 import { Ships, Modifications } from 'coriolis-data/dist';
 import { chain } from 'lodash';
-import { needsInternalMigration, OLD_INTERNAL_LAYOUTS, remapInternalArray, remapInternalParallel } from './LinkMigration';
+import { needsInternalMigration, OLD_INTERNAL_LAYOUTS, remapInternalArray, remapInternalParallel,
+         needsHardpointMigration, OLD_HARDPOINT_LAYOUTS, remapHardpointArray, remapHardpointParallel } from './LinkMigration';
 const zlib = require('zlib');
 
 const UNIQUE_MODULES = ['psg', 'sg', 'bsg', 'rf', 'fs', 'fh', 'gfsb', 'dc', 'ews', 'mlc'];
@@ -1043,11 +1044,22 @@ export default class Ship {
       ? OLD_INTERNAL_LAYOUTS[this.id].length
       : this.internal.length;
 
+    // A v1/v2 link for a ship that has since gained a HARDPOINT slot (e.g. the
+    // Asp Scout's 3rd utility mount) encodes only the OLD number of hardpoints.
+    // Decode using that OLD length so the positional stream (and the global
+    // mod/blueprint/priority/enabled indices, which run
+    // [bulkhead, ...standard, ...hardpoints, ...internal]) stay aligned, then
+    // remap onto the current hardpoint array. v3 links are already current.
+    const migrateHardpoint = version !== 3 && needsHardpointMigration(this.id);
+    const oldHardpointLen = migrateHardpoint
+      ? OLD_HARDPOINT_LAYOUTS[this.id].length
+      : this.hardpoints.length;
+
     let standard = new Array(this.standard.length),
-        hardpoints = new Array(this.hardpoints.length),
+        hardpoints = new Array(oldHardpointLen),
         internal = new Array(oldInternalLen),
-        modifications = new Array(1 + this.standard.length + this.hardpoints.length + oldInternalLen),
-        blueprints = new Array(1 + this.standard.length + this.hardpoints.length + oldInternalLen);
+        modifications = new Array(1 + this.standard.length + oldHardpointLen + oldInternalLen),
+        blueprints = new Array(1 + this.standard.length + oldHardpointLen + oldInternalLen);
 
     if (parts[1]) {
       enabled = LZString.decompressFromBase64(Utils.fromUrlSafe(parts[1])).split('');
@@ -1074,7 +1086,30 @@ export default class Ship {
 
     if (version == 1) {
       // Alter as required due to changes in the (build) code from one version to the next
-      this.upgradeInternals(internal, 1 + this.standard.length + this.hardpoints.length, priorities, enabled, modifications, blueprints, version);
+      this.upgradeInternals(internal, 1 + this.standard.length + oldHardpointLen, priorities, enabled, modifications, blueprints, version);
+    }
+
+    // The global parallel arrays (priorities/enabled/modifications/blueprints)
+    // run [bulkhead, ...standard, ...hardpoints, ...internal]. Migrate the
+    // hardpoint region FIRST (it sits before internal, so remapping it changes
+    // the internal region's offset), then the internal region.
+    if (migrateHardpoint) {
+      const preHardpoint = 1 + this.standard.length;
+
+      hardpoints = remapHardpointArray(this.id, hardpoints);
+
+      const remapHpRegion = (arr, fill) => {
+        if (!arr) return arr;
+        const head = arr.slice(0, preHardpoint);
+        const oldHp = arr.slice(preHardpoint, preHardpoint + oldHardpointLen);
+        const tail = arr.slice(preHardpoint + oldHardpointLen); // the internal region
+        const newHp = remapHardpointParallel(this.id, oldHp, fill);
+        return head.concat(newHp, tail);
+      };
+      priorities = remapHpRegion(priorities, '0');
+      enabled = remapHpRegion(enabled, '1');
+      modifications = remapHpRegion(modifications, undefined);
+      blueprints = remapHpRegion(blueprints, undefined);
     }
 
     if (migrateInternal) {
@@ -1082,7 +1117,8 @@ export default class Ship {
       // onto the current layout. modifications/blueprints are global-indexed:
       // [bulkhead, ...standard, ...hardpoints, ...internal], so the internal
       // portion is remapped in place at the internal offset. priorities/enabled
-      // share that same global layout.
+      // share that same global layout. Use the CURRENT hardpoints length here —
+      // if hardpoints were just migrated above, the arrays are already widened.
       const preInternal = 1 + this.standard.length + this.hardpoints.length;
 
       internal = remapInternalArray(this.id, internal);
