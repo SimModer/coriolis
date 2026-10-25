@@ -207,7 +207,7 @@
                 "class": {
                   "type": "integer",
                   "minimum": 1,
-                  "maximum": 6
+                  "maximum": 8
                 },
                 "rating": {
                   "$ref": "#/definitions/standardRatings"
@@ -303,7 +303,7 @@
                 "class": {
                   "type": "integer",
                   "minimum": 1,
-                  "maximum": 6
+                  "maximum": 8
                 },
                 "rating": {
                   "$ref": "#/definitions/standardRatings"
@@ -660,7 +660,12 @@
         "Reinforced Alloy",
         "Military Grade Composite",
         "Mirrored Surface Composite",
-        "Reactive Surface Composite"
+        "Reactive Surface Composite",
+        "Mk II Ablative Lightweight",
+        "Mk II Ablative Reinforced",
+        "Mk II Ablative Military Grade",
+        "Mk II Ablative Mirrored",
+        "Mk II Ablative Reactive"
       ]
     },
     "bulkheads": {
