@@ -478,6 +478,24 @@ export function toSLEF(buildName, ship) {
     }
   });
 
+  // Calculated top-level values. Spansh (and other journal-Loadout consumers)
+  // require these alongside the module list; without them parsing fails with
+  // "cannot parse ship". They mirror the fields Frontier writes into a journal
+  // Loadout event.
+  const hullValue = Math.round(ship.hullCost);
+  const modulesValue = Math.round(ship.totalCost - ship.hullCost);
+  // Elite's rebuy is 5% of the total ship value (hull + modules), floored.
+  const rebuy = Math.floor((hullValue + modulesValue) * 0.05);
+
+  // Maximum single-jump range, computed exactly as the UI / detailed-build
+  // export does: empty of cargo, with only the FSD's max fuel-per-jump aboard.
+  let maxJumpRange = 0;
+  const fsd = ship.standard[2] && ship.standard[2].m;
+  if (fsd) {
+    const fsdMaxFuel = fsd instanceof Module ? fsd.getMaxFuelPerJump() : fsd.maxfuel;
+    maxJumpRange = Calc.jumpRange(ship.unladenMass - ship.fuelCapacity + fsdMaxFuel, fsd, fsdMaxFuel, ship);
+  }
+
   return [{
     header: {
       appName: 'Coriolis',
@@ -485,7 +503,23 @@ export function toSLEF(buildName, ship) {
       appURL: 'https://coriolis.io' + outfitURL(ship.id, ship.toString(), buildName)
     },
     data: {
-      Ship: shipFdName,
+      // Frontier journal Loadout events use the LOWERCASE internal ship name
+      // (e.g. 'explorer_nx', 'krait_mkii'); Spansh and other consumers key on
+      // exactly this. SHIP_FD_NAME_TO_CORIOLIS_NAME uses mixed-case keys, so
+      // lowercase it here.
+      Ship: shipFdName.toLowerCase(),
+      ShipName: '',
+      ShipIdent: '',
+      HullValue: hullValue,
+      ModulesValue: modulesValue,
+      UnladenMass: Math.round(ship.unladenMass * 100) / 100,
+      CargoCapacity: ship.cargoCapacity,
+      MaxJumpRange: Math.round(maxJumpRange * 100000) / 100000,
+      FuelCapacity: {
+        Main: ship.fuelCapacity,
+        Reserve: ship.reserveFuelCapacity
+      },
+      Rebuy: rebuy,
       Modules: modules
     }
   }];
