@@ -1,3 +1,5 @@
+#4.1.15
+  * Fix SLEF Export to work with Spansh
 #4.1.14
   * Fixes to Operations updates
   * Anaconda MkII Added
